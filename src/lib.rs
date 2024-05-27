@@ -21,9 +21,10 @@ pub struct FurssOptions {
     _proxy: Option<String>,
     _proxy_username: Option<String>,
     _proxy_password: Option<String>,
+    #[cfg(feature = "proxy")]
     _disable_cache: Option<bool>,
     full: Option<bool>,
-    _number_items: Option<u16>,
+    number_items: Option<u16>,
 }
 
 #[cfg(feature = "proxy")]

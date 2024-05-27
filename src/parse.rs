@@ -155,7 +155,15 @@ async fn embellish_feed(
 
     let url_requests: Vec<String> = match options.and_then(|opt| opt.full) {
         Some(true) => urls,
-        _ => urls.iter().take(10).cloned().collect(),
+        _ => urls
+            .iter()
+            .take(
+                options
+                    .and_then(|opt| opt.number_items)
+                    .map_or(10, std::convert::Into::into),
+            )
+            .cloned()
+            .collect(),
     };
 
     let cache: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
