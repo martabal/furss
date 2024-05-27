@@ -59,7 +59,7 @@ fn parse_rss_feed(content: &str) -> Vec<String> {
     urls
 }
 
-fn add_content_to_item(content: &str, book_reviews: &HashMap<String, String>) -> String {
+fn add_content_to_item(content: &str, cache: &HashMap<String, String>) -> String {
     let mut reader = Reader::from_str(content);
 
     let mut temp_content: VecDeque<Event> = VecDeque::new();
@@ -101,7 +101,7 @@ fn add_content_to_item(content: &str, book_reviews: &HashMap<String, String>) ->
             Ok(Event::End(ref e)) => {
                 if e.name().as_ref() == b"item" {
                     if !url.is_empty() {
-                        let content = book_reviews.get(&url).cloned();
+                        let content = cache.get(&url).cloned();
 
                         if let Some(review) = content {
                             while let Some(event) = temp_content.pop_front() {
@@ -159,19 +159,19 @@ async fn embellish_feed(
         _ => urls.iter().take(10).cloned().collect(),
     };
 
-    let book_reviews: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+    let cache: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let fetches = futures::stream::iter(url_requests.into_iter().map(|path| {
-        let book_reviews = Arc::clone(&book_reviews);
+        let cache = Arc::clone(&cache);
         async move {
             match reqwest::get(&path).await {
                 Ok(resp) => match resp.text().await {
                     Ok(text) => {
                         println!("RESPONSE: {} bytes from {}", text.len(), path);
                         let before2 = Instant::now();
-                        let mut book_reviews = book_reviews.lock().await;
+                        let mut cache = cache.lock().await;
                         println!("Elapsed time: {:.2?}", before2.elapsed());
                         if let Some(content) = extract_content(&text) {
-                            book_reviews.insert(path, content);
+                            cache.insert(path, content);
                         }
                     }
                     Err(_) => println!("ERROR reading {path}"),
@@ -184,9 +184,9 @@ async fn embellish_feed(
     .collect::<Vec<()>>();
     println!("Waiting...");
     fetches.await;
-    let cloned_reviews = book_reviews.lock().await.clone();
+    let cloned_cache = cache.lock().await.clone();
 
-    add_content_to_item(content, &cloned_reviews)
+    add_content_to_item(content, &cloned_cache)
 }
 
 fn extract_content(content: &str) -> Option<String> {
@@ -309,13 +309,13 @@ mod tests {
         let content = r#"<rss version="2.0"><channel><title>Test</title><link>https://test.com/</link><description>RSS to test</description><language>en-us</language><item><title>First article</title><link>https://exemple.org</link><description>This is the description of exemple.org</description><pubDate>Sun, 26 May 2024 10:00:00 -0400</pubDate><dc:creator>martabal</dc:creator></item><item><title>Second article</title><link>https://not.in.hashmap.com</link><description>This is the description of not.in.hashmap.com</description><pubDate>Sun, 26 May 2024 09:00:00 -0400</pubDate><dc:creator>martabal</dc:creator></item></channel></rss>"#;
 
         let expect = r#"<rss version="2.0"><channel><title>Test</title><link>https://test.com/</link><description>RSS to test</description><language>en-us</language><item><title>First article</title><link>https://exemple.org</link><description>This is the description of exemple.org</description><pubDate>Sun, 26 May 2024 10:00:00 -0400</pubDate><dc:creator>martabal</dc:creator><ns0:encoded>Content of exemple.org</ns0:encoded></item></channel></rss>"#;
-        let mut book_reviews = HashMap::new();
+        let mut cache = HashMap::new();
 
         // Review some books.
-        book_reviews.insert(
+        cache.insert(
             "https://exemple.org".to_string(),
             "Content of exemple.org".to_string(),
         );
-        assert_eq!(add_content_to_item(content, &book_reviews), expect);
+        assert_eq!(add_content_to_item(content, &cache), expect);
     }
 }
