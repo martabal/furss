@@ -1,5 +1,4 @@
 use axum::handler::Handler;
-use dotenvy::dotenv;
 use furss::{APP_DEFAULT_PORT, APP_NAME, APP_VERSION};
 
 use std::{
@@ -7,13 +6,14 @@ use std::{
     env,
     sync::{Arc, Mutex},
 };
-use tracing::{info, warn};
-use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 #[cfg(feature = "proxy")]
 use {
+    dotenvy::dotenv,
     furss::{routes::handler, AppState, APP_PORT},
     std::net::SocketAddr,
+    tracing::{info, warn},
+    tracing_subscriber::{filter::LevelFilter, EnvFilter},
 };
 
 #[tokio::main]
@@ -22,6 +22,8 @@ async fn main() {
     APP_VERSION
         .set(env!("CARGO_PKG_VERSION").to_string())
         .unwrap();
+
+    #[cfg(feature = "proxy")]
     dotenv().ok();
 
     let log_level_str = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());

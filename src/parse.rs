@@ -2,7 +2,6 @@ use std::{
     collections::{HashMap, VecDeque},
     io::Cursor,
     sync::Arc,
-    time::Instant,
 };
 
 use futures::StreamExt;
@@ -14,7 +13,7 @@ use quick_xml::{
 use reqwest::Url;
 use tokio::sync::Mutex;
 
-use crate::{AppState, FurssOptions};
+use crate::{log_message, AppState, FurssOptions, LogLevel};
 
 #[must_use]
 pub fn add_http_prefix(mut url: &str) -> String {
@@ -166,23 +165,27 @@ async fn embellish_feed(
             match reqwest::get(&path).await {
                 Ok(resp) => match resp.text().await {
                     Ok(text) => {
-                        println!("RESPONSE: {} bytes from {}", text.len(), path);
-                        let before2 = Instant::now();
+                        log_message!(
+                            LogLevel::Trace,
+                            "{}",
+                            format!("RESPONSE: {} bytes from {}", text.len(), path)
+                        );
                         let mut cache = cache.lock().await;
-                        println!("Elapsed time: {:.2?}", before2.elapsed());
                         if let Some(content) = extract_content(&text) {
                             cache.insert(path, content);
                         }
                     }
-                    Err(_) => println!("ERROR reading {path}"),
+                    Err(_) => log_message!(LogLevel::Warn, "ERROR reading {path}"),
                 },
-                Err(_) => println!("ERROR downloading {path}"),
+                Err(_) => log_message!(LogLevel::Warn, "ERROR downloading {path}"),
             }
         }
     }))
     .buffer_unordered(8)
     .collect::<Vec<()>>();
-    println!("Waiting...");
+
+    log_message!(LogLevel::Debug, "This is an info message");
+
     fetches.await;
     let cloned_cache = cache.lock().await.clone();
 

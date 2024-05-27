@@ -38,3 +38,69 @@ pub struct Key {
 pub struct AppState {
     pub cache: Arc<Mutex<HashMap<String, HashMap<String, Key>>>>,
 }
+
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+#[macro_export]
+macro_rules! log_message {
+    ($level:expr, $($arg:tt)*) => {
+        match $level {
+            $crate::LogLevel::Trace => {
+                #[cfg(feature = "proxy")]
+                {
+                    tracing::trace!($($arg)*);
+                }
+                #[cfg(not(feature = "proxy"))]
+                {
+                    println!("[TRACE] {}", format!($($arg)*));
+                }
+            },
+            $crate::LogLevel::Debug => {
+                #[cfg(feature = "proxy")]
+                {
+                    tracing::debug!($($arg)*);
+                }
+                #[cfg(not(feature = "proxy"))]
+                {
+                    println!("[INFO] {}", format!($($arg)*));
+                }
+            },
+            $crate::LogLevel::Info => {
+                #[cfg(feature = "proxy")]
+                {
+                    tracing::info!($($arg)*);
+                }
+                #[cfg(not(feature = "proxy"))]
+                {
+                    println!("[INFO] {}", format!($($arg)*));
+                }
+            },
+            $crate::LogLevel::Warn => {
+                #[cfg(feature = "proxy")]
+                {
+                    tracing::warn!($($arg)*);
+                }
+                #[cfg(not(feature = "proxy"))]
+                {
+                    println!("[WARN] {}", format!($($arg)*));
+                }
+            },
+            $crate::LogLevel::Error => {
+                #[cfg(feature = "proxy")]
+                {
+                    tracing::error!($($arg)*);
+                }
+                #[cfg(not(feature = "proxy"))]
+                {
+                    println!("[ERROR] {}", format!($($arg)*));
+                }
+            },
+        }
+    };
+}

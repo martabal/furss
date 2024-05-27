@@ -16,12 +16,12 @@ serde = { version = "1.0.203", features = ["derive"] }
 tl = "0.7.8"
 tokio = { version = "1.37.0", features = ["full"] }
 tower-http = { version = "0.5.2", features = ["cors", "fs"] }
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing = { version = "0.1.40", optional = true }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"], optional = true }
 
 [features]
 default = ["proxy"]
-proxy = ["dep:axum","dep:dotenvy"]
+proxy = ["dep:axum","dep:dotenvy", "dep:tracing", "dep:tracing-subscriber"]
 
 [lints.rust]
 unsafe_code = "forbid"
