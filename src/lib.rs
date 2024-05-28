@@ -14,10 +14,9 @@ pub static APP_VERSION: OnceLock<String> = OnceLock::new();
 #[cfg(feature = "proxy")]
 pub static APP_PORT: OnceLock<u16> = OnceLock::new();
 
-// todo: add configuration options
 #[derive(Clone, Deserialize)]
 pub struct FurssOptions {
-    _flaresolverr: Option<String>,
+    flaresolverr: Option<String>,
     _proxy: Option<String>,
     _proxy_username: Option<String>,
     _proxy_password: Option<String>,

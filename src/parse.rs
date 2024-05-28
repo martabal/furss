@@ -10,7 +10,7 @@ use quick_xml::{
     Reader, Writer,
 };
 
-use reqwest::Url;
+use reqwest::{Client, Url};
 use tokio::sync::Mutex;
 
 use crate::{log_message, AppState, FurssOptions, LogLevel};
@@ -148,20 +148,16 @@ fn add_content_to_item(content: &str, cache: &HashMap<String, String>) -> String
 
 async fn embellish_feed(
     content: &str,
-    options: Option<&FurssOptions>,
+    options: &FurssOptions,
     _cache: Option<&AppState>,
 ) -> String {
     let urls = parse_rss_feed(content);
 
-    let url_requests: Vec<String> = match options.and_then(|opt| opt.full) {
+    let url_requests: Vec<String> = match options.full {
         Some(true) => urls,
         _ => urls
             .iter()
-            .take(
-                options
-                    .and_then(|opt| opt.number_items)
-                    .map_or(10, std::convert::Into::into),
-            )
+            .take(options.number_items.map_or(10, std::convert::Into::into))
             .cloned()
             .collect(),
     };
@@ -170,7 +166,20 @@ async fn embellish_feed(
     let fetches = futures::stream::iter(url_requests.into_iter().map(|path| {
         let cache = Arc::clone(&cache);
         async move {
-            match reqwest::get(&path).await {
+            let client = options.flaresolverr.as_ref().map_or_else(
+                || {
+                    let client = Client::new();
+                    client.get(&path).send()
+                },
+                |flaresolverr_url| {
+                    let mut map = HashMap::new();
+                    map.insert("cmd", "request.get");
+                    map.insert("url", &path);
+                    let client = Client::new();
+                    client.post(flaresolverr_url).json(&map).send()
+                },
+            );
+            match client.await {
                 Ok(resp) => match resp.text().await {
                     Ok(text) => {
                         log_message!(
@@ -224,8 +233,25 @@ fn extract_content(content: &str) -> Option<String> {
 pub async fn get_rss_feed(url: &str, options: &FurssOptions, state: Option<&AppState>) -> String {
     let mut new_url = Url::parse(url).unwrap();
     new_url.query_pairs_mut().clear();
-    let body = reqwest::get(new_url).await.unwrap().text().await.unwrap();
-    embellish_feed(&body, Some(options), state).await
+    let body = match &options.flaresolverr {
+        Some(flaresolverr_url) => {
+            let mut map = HashMap::new();
+            map.insert("cmd", "request.get");
+            map.insert("url", new_url.as_str());
+            let client = Client::new();
+            let response = client
+                .post(flaresolverr_url)
+                .json(&map)
+                .send()
+                .await
+                .unwrap();
+
+            response.text().await.unwrap()
+        }
+        None => reqwest::get(new_url).await.unwrap().text().await.unwrap(),
+    };
+
+    embellish_feed(&body, options, state).await
 }
 
 #[cfg(test)]
