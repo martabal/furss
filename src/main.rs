@@ -28,23 +28,23 @@ async fn main() {
 
     let log_level_str = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
 
-    let filter = EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env()
-        .unwrap()
-        .add_directive(
-            format!("{}={log_level_str}", APP_NAME.get().unwrap())
-                .parse()
-                .unwrap(),
-        );
-
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .compact()
-        .init();
-
     #[cfg(feature = "proxy")]
     {
+        let filter = EnvFilter::builder()
+            .with_default_directive(LevelFilter::INFO.into())
+            .from_env()
+            .unwrap()
+            .add_directive(
+                format!("{}={log_level_str}", APP_NAME.get().unwrap())
+                    .parse()
+                    .unwrap(),
+            );
+
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .compact()
+            .init();
+
         let state = AppState {
             cache: Arc::new(Mutex::new(HashMap::new())),
         };

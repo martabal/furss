@@ -12,7 +12,7 @@ quick-xml = "0.31.0"
 reqwest = { version = "0.12.4", features = ["json"] }
 serde = { version = "1.0.203", features = ["derive"] }
 tl = "0.7.8"
-tokio = { version = "1.37.0", features = ["full"] }
+tokio = { version = "1.38.0", features = ["full"] }
 tower-http = { version = "0.5.2", features = ["cors", "fs"] }
 tracing = { version = "0.1.40", optional = true }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"], optional = true }
