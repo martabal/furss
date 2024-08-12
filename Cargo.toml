@@ -10,7 +10,7 @@ dotenvy = { version = "0.15.7", optional = true }
 futures = "0.3.30"
 quick-xml = "0.36.1"
 reqwest = { version = "0.12.5", features = ["json"] }
-serde = { version = "1.0.204", features = ["derive"] }
+serde = { version = "1.0.206", features = ["derive"] }
 tl = "0.7.8"
 tokio = { version = "1.39.2", features = ["full"] }
 tower-http = { version = "0.5.2", features = ["cors", "fs"] }
