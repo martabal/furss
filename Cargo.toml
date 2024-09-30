@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 argh = "0.1.12"
-axum = { version = "0.7.6", optional = true }
+axum = { version = "0.7.7", optional = true }
 dotenvy = { version = "0.15.7", optional = true }
 futures = "0.3.30"
 quick-xml = "0.36.2"
@@ -13,7 +13,7 @@ reqwest = { version = "0.12.7", features = ["json"] }
 serde = { version = "1.0.210", features = ["derive"] }
 tl = "0.7.8"
 tokio = { version = "1.40.0", features = ["full"] }
-tower-http = { version = "0.6.0", features = ["cors", "fs"] }
+tower-http = { version = "0.6.1", features = ["cors", "fs"] }
 tracing = { version = "0.1.40", optional = true }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"], optional = true }
 
