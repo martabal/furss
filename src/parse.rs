@@ -343,15 +343,15 @@ mod tests {
 
     #[test]
     fn test_add_content_to_item() {
-        let content = r#"<rss version="2.0"><channel><title>Test</title><link>https://test.com/</link><description>RSS to test</description><language>en-us</language><item><title>First article</title><link>https://exemple.org</link><description>This is the description of exemple.org</description><pubDate>Sun, 26 May 2024 10:00:00 -0400</pubDate><dc:creator>martabal</dc:creator></item><item><title>Second article</title><link>https://not.in.hashmap.com</link><description>This is the description of not.in.hashmap.com</description><pubDate>Sun, 26 May 2024 09:00:00 -0400</pubDate><dc:creator>martabal</dc:creator></item></channel></rss>"#;
+        let content = r#"<rss version="2.0"><channel><title>Test</title><link>https://test.com/</link><description>RSS to test</description><language>en-us</language><item><title>First article</title><link>https://example.org</link><description>This is the description of example.org</description><pubDate>Sun, 26 May 2024 10:00:00 -0400</pubDate><dc:creator>martabal</dc:creator></item><item><title>Second article</title><link>https://not.in.hashmap.com</link><description>This is the description of not.in.hashmap.com</description><pubDate>Sun, 26 May 2024 09:00:00 -0400</pubDate><dc:creator>martabal</dc:creator></item></channel></rss>"#;
 
-        let expect = r#"<rss version="2.0"><channel><title>Test</title><link>https://test.com/</link><description>RSS to test</description><language>en-us</language><item><title>First article</title><link>https://exemple.org</link><description>This is the description of exemple.org</description><pubDate>Sun, 26 May 2024 10:00:00 -0400</pubDate><dc:creator>martabal</dc:creator><ns0:encoded>Content of exemple.org</ns0:encoded></item></channel></rss>"#;
+        let expect = r#"<rss version="2.0"><channel><title>Test</title><link>https://test.com/</link><description>RSS to test</description><language>en-us</language><item><title>First article</title><link>https://example.org</link><description>This is the description of example.org</description><pubDate>Sun, 26 May 2024 10:00:00 -0400</pubDate><dc:creator>martabal</dc:creator><ns0:encoded>Content of example.org</ns0:encoded></item></channel></rss>"#;
         let mut cache = HashMap::new();
 
         // Review some books.
         cache.insert(
-            "https://exemple.org".to_string(),
-            "Content of exemple.org".to_string(),
+            "https://example.org".to_string(),
+            "Content of example.org".to_string(),
         );
         assert_eq!(add_content_to_item(content, &cache), expect);
     }
