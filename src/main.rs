@@ -1,11 +1,8 @@
 use axum::handler::Handler;
 use furss::{APP_DEFAULT_PORT, APP_NAME, APP_VERSION};
+use tokio::sync::Mutex;
 
-use std::{
-    collections::HashMap,
-    env,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, env, sync::Arc};
 
 #[cfg(feature = "proxy")]
 use {

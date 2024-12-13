@@ -1,10 +1,11 @@
+use core::str;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     io::Cursor,
     sync::Arc,
 };
 
-use futures::StreamExt;
+use futures::{stream, StreamExt};
 use quick_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Reader, Writer,
@@ -149,11 +150,11 @@ fn add_content_to_item(content: &str, cache: &HashMap<String, String>) -> String
 async fn embellish_feed(
     content: &str,
     options: &FurssOptions,
-    _cache: Option<&AppState>,
+    cache: &mut HashMap<String, String>,
 ) -> String {
     let urls = parse_rss_feed(content);
 
-    let url_requests: Vec<String> = match options.full {
+    let mut url_requests: Vec<String> = match options.full {
         Some(true) => urls,
         _ => urls
             .iter()
@@ -162,51 +163,65 @@ async fn embellish_feed(
             .collect(),
     };
 
-    let cache: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
-    let fetches = futures::stream::iter(url_requests.into_iter().map(|path| {
-        let cache = Arc::clone(&cache);
-        async move {
-            let client = options.flaresolverr.as_ref().map_or_else(
-                || {
-                    let client = Client::new();
-                    client.get(&path).send()
-                },
-                |flaresolverr_url| {
-                    let mut map = HashMap::new();
-                    map.insert("cmd", "request.get");
-                    map.insert("url", &path);
-                    let client = Client::new();
-                    client.post(flaresolverr_url).json(&map).send()
-                },
-            );
-            match client.await {
-                Ok(resp) => match resp.text().await {
-                    Ok(text) => {
-                        log_message!(
-                            LogLevel::Trace,
-                            "{}",
-                            format!("RESPONSE: {} bytes from {}", text.len(), path)
-                        );
-                        let mut cache = cache.lock().await;
-                        if let Some(content) = extract_content(&text) {
-                            cache.insert(path, content);
-                        }
-                    }
-                    Err(_) => log_message!(LogLevel::Warn, "ERROR reading {path}"),
-                },
-                Err(_) => log_message!(LogLevel::Warn, "ERROR downloading {path}"),
+    let mut articles: HashMap<String, String> = HashMap::new();
+
+    for (key, value) in url_requests
+        .iter()
+        .filter_map(|key| cache.get(key).map(|value| (key.clone(), value.clone())))
+    {
+        articles.insert(key, value);
+    }
+
+    // Empty cache
+    url_requests.retain(|x| !cache.contains_key(x));
+
+    // Remove cached articles
+    let vec_set: HashSet<_> = url_requests.iter().cloned().collect();
+    cache.retain(|key, _| vec_set.contains(key));
+
+    let arc_articles: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(articles));
+
+    let client = Client::new();
+
+    let bodies = stream::iter(url_requests.clone())
+        .map(|url| {
+            let client = &client;
+            async move {
+                let resp = client.get(&url).send().await?;
+                let body = resp.bytes().await?;
+                Ok::<_, reqwest::Error>((url, body))
             }
-        }
-    }))
-    .buffer_unordered(8)
-    .collect::<Vec<()>>();
+        })
+        .buffer_unordered(8);
 
-    log_message!(LogLevel::Debug, "This is an info message");
+    bodies
+        .for_each(|result| async {
+            match result {
+                Ok((url, body)) => {
+                    log_message!(
+                        LogLevel::Trace,
+                        "{}",
+                        format!("RESPONSE: {} bytes from {}", body.len(), url)
+                    );
 
-    fetches.await;
-    let cloned_cache = cache.lock().await.clone();
+                    let body_string = str::from_utf8(&body).unwrap();
+                    if let Some(content) = extract_content(body_string) {
+                        let mut oulou = arc_articles.lock().await;
+                        oulou.insert(url, content);
+                    }
+                }
+                Err(e) => log_message!(LogLevel::Warn, "ERROR downloading {e}"),
+            }
+        })
+        .await;
 
-    add_content_to_item(content, &cloned_cache)
+    let cloned_articles = arc_articles.lock().await.clone();
+
+    for (url, article) in cloned_articles.clone() {
+        cache.insert(url, article);
+    }
+
+    add_content_to_item(content, &cloned_articles)
 }
 
 fn extract_content(content: &str) -> Option<String> {
@@ -230,14 +245,14 @@ fn extract_content(content: &str) -> Option<String> {
 /// # Panics
 ///
 /// Will panic if url is not a valid url
-pub async fn get_rss_feed(url: &str, options: &FurssOptions, state: Option<&AppState>) -> String {
-    let mut new_url = Url::parse(url).unwrap();
-    new_url.query_pairs_mut().clear();
+pub async fn get_rss_feed(url: &str, options: &FurssOptions, state: &AppState) -> String {
+    let mut rss_url = Url::parse(url).unwrap();
+    rss_url.query_pairs_mut().clear();
     let body = match &options.flaresolverr {
         Some(flaresolverr_url) => {
             let mut map = HashMap::new();
             map.insert("cmd", "request.get");
-            map.insert("url", new_url.as_str());
+            map.insert("url", rss_url.as_str());
             let client = Client::new();
             let response = client
                 .post(flaresolverr_url)
@@ -248,10 +263,18 @@ pub async fn get_rss_feed(url: &str, options: &FurssOptions, state: Option<&AppS
 
             response.text().await.unwrap()
         }
-        None => reqwest::get(new_url).await.unwrap().text().await.unwrap(),
+        None => reqwest::get(rss_url).await.unwrap().text().await.unwrap(),
     };
 
-    embellish_feed(&body, options, state).await
+    let mut cache = state.cache.lock().await.get(url).map_or_else(
+        || HashMap::<String, String>::new(),
+        std::clone::Clone::clone,
+    );
+
+    let response = embellish_feed(&body, options, &mut cache).await;
+    state.cache.lock().await.insert(url.to_string(), cache);
+
+    response
 }
 
 #[cfg(test)]
@@ -316,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_extract_content_without_script_tags() {
-        let content = r#"<html><head><title>Test</title></head><body><article><h1>Article Title</h1><p>Article content goes here.</p></article></body></html>"#;
+        let content = r"<html><head><title>Test</title></head><body><article><h1>Article Title</h1><p>Article content goes here.</p></article></body></html>";
 
         assert_eq!(
             extract_content(content).unwrap(),
@@ -336,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_extract_content_no_article_tag() {
-        let content = r#"<html><head><title>Test</title></head><body><div><h1>Another Title</h1><p>Some content</p></div></body><html>"#;
+        let content = r"<html><head><title>Test</title></head><body><div><h1>Another Title</h1><p>Some content</p></div></body><html>";
 
         assert_eq!(extract_content(content), None);
     }

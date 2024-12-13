@@ -1,9 +1,10 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, OnceLock},
 };
 
 use serde::Deserialize;
+use tokio::sync::Mutex;
 
 pub mod parse;
 pub mod routes;
@@ -27,16 +28,9 @@ pub struct FurssOptions {
 }
 
 #[cfg(feature = "proxy")]
-#[derive(Deserialize, Clone)]
-pub struct Key {
-    pub url: String,
-    pub time: String,
-}
-
-#[cfg(feature = "proxy")]
 #[derive(Clone)]
 pub struct AppState {
-    pub cache: Arc<Mutex<HashMap<String, HashMap<String, Key>>>>,
+    pub cache: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
 }
 
 pub enum LogLevel {

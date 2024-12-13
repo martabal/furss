@@ -7,26 +7,33 @@ use {
     axum::{
         extract::{Query, State},
         http::{header::CONTENT_TYPE, HeaderMap, HeaderValue},
-        response::{IntoResponse, Response},
+        response::IntoResponse,
     },
 };
 
 #[cfg(feature = "proxy")]
+/// # Panics
+///
+/// Will panic if `application/xml` is not a valid content-type
 pub async fn handler(
-    headers: HeaderMap,
+    req_headers: HeaderMap,
     uri: axum::http::Uri,
     options: Query<FurssOptions>,
     State(state): State<AppState>,
-) -> Response {
+) -> impl IntoResponse {
     let options2: FurssOptions = options.0;
-
-    match headers.get(CONTENT_TYPE).map(HeaderValue::as_bytes) {
+    let mut headers = HeaderMap::new();
+    let response = match req_headers.get(CONTENT_TYPE).map(HeaderValue::as_bytes) {
         Some(b"application/xml") => {
-            let response =
-                get_rss_feed(&add_http_prefix(uri.path()), &options2, Some(&state)).await;
-            response.into_response()
+            let response = get_rss_feed(&add_http_prefix(uri.path()), &options2, &state).await;
+
+            headers.insert(CONTENT_TYPE, "application/xml".parse().unwrap());
+
+            response
         }
 
-        _ => String::from("Hello, world!").into_response(),
-    }
+        _ => String::from("Hello, world!"),
+    };
+
+    (headers, response)
 }
