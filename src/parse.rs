@@ -16,6 +16,9 @@ use tokio::sync::Mutex;
 
 use crate::{log_message, AppState, FurssOptions, LogLevel};
 
+const ITEMS: &[&[u8]] = &[b"item", b"entry"];
+const LINKS: &[&[u8]] = &[b"link", b"id"];
+
 #[must_use]
 pub fn add_http_prefix(mut url: &str) -> String {
     url = url.trim_start_matches('/');
@@ -38,8 +41,10 @@ fn parse_rss_feed(content: &str) -> Vec<String> {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),
             Ok(Event::Eof) => break,
             Ok(Event::Start(ref e)) => match e.name().as_ref() {
-                b"item" => in_item = true,
-                b"link" if in_item => {
+                name if ITEMS.contains(&name) => {
+                    in_item = true;
+                }
+                name if in_item && LINKS.contains(&name) => {
                     let link = reader
                         .read_text(e.name())
                         .expect("Cannot decode text value");
@@ -48,7 +53,7 @@ fn parse_rss_feed(content: &str) -> Vec<String> {
                 _ => (),
             },
             Ok(Event::End(ref e)) => {
-                if e.name().as_ref() == b"item" {
+                if ITEMS.contains(&e.name().as_ref()) {
                     in_item = false;
                 }
             }
@@ -56,6 +61,7 @@ fn parse_rss_feed(content: &str) -> Vec<String> {
         }
         buf.clear();
     }
+
     urls
 }
 
@@ -70,10 +76,10 @@ fn add_content_to_item(content: &str, cache: &HashMap<String, String>) -> String
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"item" => {
+                name if ITEMS.contains(&name) => {
                     temp_content.push_back(Event::Start(e.clone()));
                 }
-                b"link" => {
+                name if LINKS.contains(&name) => {
                     if temp_content.is_empty() {
                         writer
                             .write_event(Event::Start(e.clone()))
@@ -99,7 +105,7 @@ fn add_content_to_item(content: &str, cache: &HashMap<String, String>) -> String
                 }
             },
             Ok(Event::End(ref e)) => {
-                if e.name().as_ref() == b"item" {
+                if ITEMS.contains(&e.name().as_ref()) {
                     if !url.is_empty() {
                         let content = cache.get(&url).cloned();
 
