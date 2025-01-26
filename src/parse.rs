@@ -1,6 +1,7 @@
 use core::str;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    error::Error,
     io::Cursor,
     sync::Arc,
 };
@@ -65,7 +66,10 @@ fn parse_rss_feed(content: &str) -> Vec<String> {
     urls
 }
 
-fn add_content_to_item(content: &str, cache: &HashMap<String, String>) -> String {
+fn add_content_to_item(
+    content: &str,
+    cache: &HashMap<String, String>,
+) -> Result<String, Box<dyn Error>> {
     let mut reader = Reader::from_str(content);
 
     let mut temp_content: VecDeque<Event> = VecDeque::new();
@@ -141,7 +145,7 @@ fn add_content_to_item(content: &str, cache: &HashMap<String, String>) -> String
             Ok(Event::Eof) => break,
             Ok(e) => {
                 if temp_content.is_empty() {
-                    writer.write_event(e).unwrap();
+                    writer.write_event(e)?;
                 } else {
                     temp_content.push_back(e);
                 }
@@ -150,14 +154,14 @@ fn add_content_to_item(content: &str, cache: &HashMap<String, String>) -> String
             Err(error) => panic!("Error at position {error}"),
         }
     }
-    String::from_utf8(writer.into_inner().into_inner()).unwrap()
+    Ok(String::from_utf8(writer.into_inner().into_inner())?)
 }
 
 async fn embellish_feed(
     content: &str,
     options: &FurssOptions,
     arc_cache: Arc<Mutex<HashMap<String, String>>>,
-) -> String {
+) -> Result<String, Box<dyn Error>> {
     let urls = parse_rss_feed(content);
 
     let mut url_requests: Vec<String> = match options.full {
@@ -211,13 +215,19 @@ async fn embellish_feed(
                         format!("RESPONSE: {} bytes from {}", body.len(), url)
                     );
 
-                    let body_string = str::from_utf8(&body).unwrap();
-                    if let Some(content) = extract_content(body_string) {
-                        arc_articles
-                            .lock()
-                            .await
-                            .insert(url.clone(), content.clone());
-                        arc_cache.lock().await.insert(url, content);
+                    match str::from_utf8(&body) {
+                        Ok(body_string) => {
+                            if let Ok(content) = extract_content(body_string) {
+                                arc_articles
+                                    .lock()
+                                    .await
+                                    .insert(url.clone(), content.clone());
+                                arc_cache.lock().await.insert(url, content);
+                            }
+                        }
+                        Err(e) => {
+                            log_message!(LogLevel::Warn, "ERROR converting {body:?} to utf8: {e}");
+                        }
                     }
                 }
                 Err(e) => log_message!(LogLevel::Warn, "ERROR downloading {e}"),
@@ -234,8 +244,8 @@ async fn embellish_feed(
     add_content_to_item(content, &cloned_articles)
 }
 
-fn extract_content(content: &str) -> Option<String> {
-    let dom = tl::parse(content, tl::ParserOptions::default()).unwrap();
+fn extract_content(content: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let dom = tl::parse(content, tl::ParserOptions::default())?;
     let mut filtered_nodes = dom
         .nodes()
         .iter()
@@ -243,13 +253,17 @@ fn extract_content(content: &str) -> Option<String> {
 
     // Find the article tag among the filtered nodes
     let article_node =
-        filtered_nodes.find(|node| node.as_tag().map_or(false, |tag| tag.name() == "article"));
+        filtered_nodes.find(|node| node.as_tag().is_some_and(|tag| tag.name() == "article"));
 
-    Some(
-        std::str::from_utf8(article_node?.as_tag()?.raw().as_bytes())
-            .ok()?
-            .to_owned(),
-    )
+    // Convert the Option to Result, returning an error if the article_node is None
+    let article_tag = article_node
+        .ok_or("No article tag found")?
+        .as_tag()
+        .ok_or("Article node is not a tag")?;
+
+    let a = std::str::from_utf8(article_tag.raw().as_bytes())?.to_owned();
+
+    Ok(a)
 }
 
 /// # Errors
@@ -280,7 +294,7 @@ pub async fn get_rss_feed(
         std::clone::Clone::clone,
     );
 
-    Ok(embellish_feed(&body, options, cache).await)
+    embellish_feed(&body, options, cache).await
 }
 
 #[cfg(test)]
@@ -367,7 +381,9 @@ mod tests {
     fn test_extract_content_no_article_tag() {
         let content = r"<html><head><title>Test</title></head><body><div><h1>Another Title</h1><p>Some content</p></div></body><html>";
 
-        assert_eq!(extract_content(content), None);
+        let result = extract_content(content);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "No article tag found");
     }
 
     #[test]
@@ -382,6 +398,6 @@ mod tests {
             "https://example.org".to_string(),
             "Content of example.org".to_string(),
         );
-        assert_eq!(add_content_to_item(content, &cache), expect);
+        assert_eq!(add_content_to_item(content, &cache).unwrap(), expect);
     }
 }

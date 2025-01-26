@@ -12,9 +12,9 @@ use {
 };
 
 #[cfg(feature = "proxy")]
-/// # Panics
+/// # Errors
 ///
-/// Will panic if `application/xml` is not a valid content-type
+/// Will return `Err` if there's an error when getting the rss feed
 pub async fn handler(
     req_headers: HeaderMap,
     uri: axum::http::Uri,
@@ -23,19 +23,35 @@ pub async fn handler(
 ) -> impl IntoResponse {
     let options2: FurssOptions = options.0;
     let mut headers = HeaderMap::new();
+
     let response = match req_headers.get(CONTENT_TYPE).map(HeaderValue::as_bytes) {
         Some(b"application/xml") => {
-            let response = get_rss_feed(&add_http_prefix(uri.path()), &options2, &state)
-                .await
-                .unwrap();
-
-            headers.insert(CONTENT_TYPE, "application/xml".parse().unwrap());
-
-            response
+            (get_rss_feed(&add_http_prefix(uri.path()), &options2, &state).await).map_or_else(
+                |_| {
+                    Err((
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "Error fetching RSS feed".to_string(),
+                    ))
+                },
+                |response| {
+                    "application/xml".parse::<HeaderValue>().map_or_else(
+                        |_| {
+                            Err((
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                "Error setting Content-Type header".to_string(),
+                            ))
+                        },
+                        |header_value| {
+                            headers.insert(CONTENT_TYPE, header_value);
+                            Ok((headers, response))
+                        },
+                    )
+                },
+            )
         }
 
-        _ => String::from("Hello, world!"),
+        _ => Ok((headers, String::from("Hello, world!"))),
     };
 
-    (headers, response)
+    response
 }
